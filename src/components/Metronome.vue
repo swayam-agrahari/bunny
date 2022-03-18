@@ -3,6 +3,7 @@
     <div
         class="template"
         v-if="this.player && !this.playing && drogStartTime && drogEndTime && drogEndTime > drogStartTime"
+        :style="{ 'left': this.leftStyle, 'width': this.widthStyle }"
     ></div>
   </div>
 </template>
@@ -67,7 +68,7 @@ export default {
   },
   computed: {
     gridGap: function (){
-      return document.body.clientWidth / this.$store.state.renderData.gridNum;
+      return document.body.clientWidth / this.renderData.gridNum;
     },
     leftStyle: function(){
       return (this.renderData.padding * this.gridGap + (this.drogStartTime - this.renderData.beginTime) * this.gridGap * 10) + 'px'

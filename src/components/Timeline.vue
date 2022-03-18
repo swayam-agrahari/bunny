@@ -1,10 +1,14 @@
 <template>
   <div class="timelineContainer">
-    <div v-for="sub in currentSubs" :key="sub.text">
-      <div class='sub-item' :style="{
+    <div v-for="(sub, key) in currentSubs" :key="key">
+      <div
+          :class="[ 'sub-item', key === currentIndex ? 'sub-highlight' : '' ]" :style="{
             'left': leftStyle(sub),
             'width': widthStyle(sub)
-        }">
+          }"
+          @click="timelineOnClick(sub)"
+          @dblclick="(e) => timelineOnDbClick(e, sub)"
+      >
         <div class="sub-handle" :style="{ left: 0, width: '10px' }"></div>
         <div class="sub-text" :title="sub.text">
           <p>{{sub.text}}</p>
@@ -18,42 +22,70 @@
 
 <script>
 import subtitleJSON from "@/sample.json";
-import {getCurrentSubs} from '@/utils';
+import {getCurrentSubs, hasSub} from '@/utils';
 import Sub from '@/lib/Sub';
+import {mapState} from "vuex";
 
 export default {
   name: 'Player',
   data: function () {
     return {
-      subtitle: null
     }
   },
   mounted: function () {
-    this.subtitle = subtitleJSON.map((item) => new Sub(item))
+    this.$store.dispatch( 'setSubtitles', {
+      value: subtitleJSON.map((item) => new Sub(item))
+    })
   },
-  methods: {},
+  methods: {
+    timelineOnClick: function (sub){
+      if (this.player.duration >= sub.startTime) {
+        this.player.currentTime = sub.startTime;
+      }
+    },
+    timelineOnDbClick: function (e, sub){
+      // const $subs = e.currentTarget;
+      const index = hasSub(sub, this.subtitle);
+      const previous = this.subtitle[index - 1];
+      const next = this.subtitle[index + 1];
+      if (previous && next) {
+        const width = (next.startTime - previous.endTime) * 10 * this.gridGap;
+        e.currentTarget.style.width = width + 'px';
+        // $subs.style.width = width + 'px';
+        // console.log( $subs.style.width )
+        // const start = DT.d2t(previous.endTime);
+        // const end = DT.d2t(next.startTime);
+      }
+    }
+  },
   computed: {
     currentSubs: function () {
-      return getCurrentSubs( this.subtitle, this.$store.state.renderData.beginTime, this.$store.state.renderData.duration);
+      return getCurrentSubs( this.subtitle, this.renderData.beginTime, this.renderData.duration);
     },
     gridGap: function () {
-      return document.body.clientWidth / this.$store.state.renderData.gridNum;
+      return document.body.clientWidth / this.renderData.gridNum;
     },
     currentIndex: function () {
       return this.currentSubs.findIndex(
-          (item) => item.startTime <= this.$store.state.currentTime && item.endTime > this.$store.state.currentTime,
+          (item) => item.startTime <= this.currentTime && item.endTime > this.currentTime,
       );
     },
     leftStyle: function () {
       return (sub) => {
-        return (this.$store.state.renderData.padding * this.gridGap + (sub.startTime - this.$store.state.renderData.beginTime) * this.gridGap * 10) + 'px'
+        return (this.renderData.padding * this.gridGap + (sub.startTime - this.renderData.beginTime) * this.gridGap * 10) + 'px'
       }
     },
     widthStyle: function () {
       return (sub) => {
         return ((sub.endTime - sub.startTime) * this.gridGap * 10) + 'px'
       }
-    }
+    },
+    ...mapState([
+        'player',
+        'subtitle',
+        'currentTime',
+        'renderData'
+    ])
   }
 }
 </script>

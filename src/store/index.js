@@ -36,14 +36,20 @@ export default createStore({
     },
     setRenderData( state, value ){
       state.renderData = value
+    },
+    setSubtitles( state, value ){
+      state.subtitle = value
     }
   },
   actions: {
-    setPlayer( context, playload ){
-      context.commit( 'setPlayer', playload.value )
+    setPlayer( context, payload ){
+      context.commit( 'setPlayer', payload.value )
     },
-    setWaveform( context, playload ){
-      context.commit( 'setWaveform', playload.value )
+    setWaveform( context, payload ){
+      context.commit( 'setWaveform', payload.value )
+    },
+    setSubtitles( context, payload ){
+      context.commit('setSubtitles', payload.value )
     }
   },
   modules: {
