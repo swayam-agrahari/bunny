@@ -8,6 +8,8 @@
           }"
           @click="timelineOnClick(sub)"
           @dblclick="(e) => timelineOnDbClick(e, sub)"
+          :data-ref="key + '-ref'"
+          :ref="key+ '-ref'"
       >
         <div class="sub-handle" :style="{ left: 0, width: '10px' }"></div>
         <div class="sub-text" :title="sub.text">
@@ -22,9 +24,10 @@
 
 <script>
 import subtitleJSON from "@/sample.json";
-import {getCurrentSubs, hasSub} from '@/utils';
+import {getCurrentSubs, hasSub, updateSub} from '@/utils';
 import Sub from '@/lib/Sub';
 import {mapState} from "vuex";
+import DT from 'duration-time-conversion';
 
 export default {
   name: 'Player',
@@ -44,17 +47,26 @@ export default {
       }
     },
     timelineOnDbClick: function (e, sub){
-      // const $subs = e.currentTarget;
+      const $subs = e.currentTarget;
       const index = hasSub(sub, this.subtitle);
       const previous = this.subtitle[index - 1];
       const next = this.subtitle[index + 1];
       if (previous && next) {
         const width = (next.startTime - previous.endTime) * 10 * this.gridGap;
-        e.currentTarget.style.width = width + 'px';
-        // $subs.style.width = width + 'px';
-        // console.log( $subs.style.width )
-        // const start = DT.d2t(previous.endTime);
-        // const end = DT.d2t(next.startTime);
+        // this.$refs[$subs.getAttribute("data-ref")][0].style.width = width + 'px';
+        // console.log( this.$refs[$subs.getAttribute("data-ref")][0] );
+        // console.log( e.currentTarget )
+
+        $subs.style.width = width + 'px';
+        const start = DT.d2t(previous.endTime);
+        const end = DT.d2t(next.startTime);
+        const newSubs = updateSub( this.subtitle, sub, {
+          start,
+          end,
+        });
+        this.$store.dispatch( 'setSubtitles', {
+          value: newSubs
+        })
       }
     }
   },

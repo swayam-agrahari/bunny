@@ -21,3 +21,24 @@ export function newSub(item){
 export function hasSub(sub, subtitle){
     return subtitle.indexOf(sub)
 }
+
+export function formatSub(sub){
+    if (Array.isArray(sub)) {
+        return sub.map((item) => newSub(item));
+    }
+    return newSub(sub);
+}
+
+export function updateSub(subs, sub, obj) {
+    const index = hasSub( sub, subs);
+    if (index < 0) return;
+    const subsClone = formatSub(subs);
+    const subClone = formatSub(sub);
+    Object.assign(subClone, obj);
+    if (subClone.check) {
+        subsClone[index] = subClone;
+        return subsClone;
+    } else {
+        return false;
+    }
+}
