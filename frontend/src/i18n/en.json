@@ -1,0 +1,20 @@
+{
+    "@metadata": {
+        "authors": [
+            "Jayprakash12345"
+        ]
+    },
+    "bunny-title": "Bunny - Editor",
+    "bunny-desc": "Bunny is a simple and easy-to-use tool for creating and syncing subtitles with videos. It helps manage subtitles in multiple languages and works smoothly with Wikimedia Commons for better accessibility.",
+    "bunny-home": "Home",
+    "bunny-projects": "Projects",
+    "bunny-preference": "Preference",
+    "bunny-about": "About",
+    "bunny-login":"Login",
+    "bunny-logout": "Logout",
+    "bunny-source-code": "Source Code is available on <0>{{github}}</0>",
+    "bunny-github": "GitHub",
+    "bunny-license": "Licensed under MIT",
+    "bunny-login-required": "You need to log in first to use the tool.",
+    "bunny-project-start": "Start a new project"
+}

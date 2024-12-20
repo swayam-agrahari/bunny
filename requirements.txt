@@ -1,0 +1,10 @@
+flask
+flask_sqlalchemy
+flask_migrate
+flask_cors
+mwoauth==0.3.3
+flask-mwoauth
+requests_oauthlib
+requests
+pyyaml
+pymysql
