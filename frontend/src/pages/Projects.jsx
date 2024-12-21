@@ -16,6 +16,7 @@ import {
 import { Link } from "react-router-dom";
 import ISO6391 from "iso-639-1";
 import { backendApi } from "../utils/api";
+import axios from "axios";
 
 const Projects = () => {
   const [projects, setProjects] = useState([]);
@@ -123,7 +124,7 @@ const Projects = () => {
         origin: "*",
       };
 
-      const response = await backendApi.get(
+      const response = await axios.get(
         "https://commons.wikimedia.org/w/api.php",
         { params }
       );

@@ -6,5 +6,5 @@ OAUTH_MWURI: https://meta.wikimedia.org/w
 SESSION_COOKIE_SECURE: True
 SESSION_REFRESH_EACH_REQUEST: False
 PREFERRED_URL_SCHEME: https
-SQLALCHEMY_DATABASE_URI: mysql+pymysql://username:password@127.0.0.1/bunny
+SQLALCHEMY_DATABASE_URI: sqlite:///mydatabase.db
 SQLALCHEMY_TRACK_MODIFICATIONS: False
