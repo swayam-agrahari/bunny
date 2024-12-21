@@ -163,7 +163,7 @@ const Projects = () => {
   const isValidCommonsPage = async (url) => {
     try {
       if (!url.includes('commons.wikimedia.org')) {
-        return false; 
+        return false;
       }
       const match = url.match(
         /^https:\/\/commons\.wikimedia\.org\/wiki\/(.+)$/
@@ -197,8 +197,8 @@ const Projects = () => {
         }
       }
     } catch (error) {
-    console.error("Error:", error);
-    return false;
+      console.error("Error:", error);
+      return false;
     }
   };
 
