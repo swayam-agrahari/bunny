@@ -17,11 +17,18 @@ import { Link } from "react-router-dom";
 import ISO6391 from "iso-639-1";
 import { backendApi } from "../utils/api";
 import axios from "axios";
+import { useDispatch } from "react-redux";
+import { updateVariable } from "../redux/variables/myVariableSlice";
 
 const Projects = () => {
   const [projects, setProjects] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const dispatch = useDispatch();
+
+  const UpdateVideoURL = (url) => {
+    dispatch(updateVariable(url));
+  };
   const [newProject, setNewProject] = useState({
     title: "",
     commons_url: "",
@@ -107,8 +114,12 @@ const Projects = () => {
     return Object.keys(newErrors).length === 0;
   };
 
+
   const isValidCommonsPage = async (url) => {
     try {
+      if (!url.includes('commons.wikimedia.org')) {
+        return false; 
+      }
       const match = url.match(
         /^https:\/\/commons\.wikimedia\.org\/wiki\/(.+)$/
       );
@@ -116,26 +127,36 @@ const Projects = () => {
         return false;
       }
 
-      const pageTitle = match[1];
+      const pageTitle = decodeURI(match[1]); // Ensure the title is decoded properly
+      console.log("Page Title:", pageTitle);
+
       const params = {
         action: "query",
         format: "json",
-        titles: encodeURIComponent(pageTitle),
+        prop: "videoinfo", // Include 'videoinfo' to get video details
+        titles: pageTitle,
+        viprop: "user|url|canonicaltitle|comment|url", // Fetch specific video properties
         origin: "*",
       };
 
-      const response = await axios.get(
-        "https://commons.wikimedia.org/w/api.php",
-        { params }
+      const res = await fetch(
+        `https://commons.wikimedia.org/w/api.php?${new URLSearchParams(params)}`
       );
-      const data = response.data;
-      if (data.query && data.query.pages) {
-        const page = Object.values(data.query.pages)[0];
-        return !Object.hasOwn(page, "missing");
+
+      const response = await res.json();
+      const { pages } = response.query;
+
+      if (Object.keys(pages)[0] !== '-1') {
+        const { url } = pages[Object.keys(pages)[0]].videoinfo[0];
+        if (url.length>0){
+          console.log(url)
+          UpdateVideoURL(url);
+          return true
+        }
       }
-      return false;
-    } catch {
-      return false;
+    } catch (error) {
+    console.error("Error:", error);
+    return false;
     }
   };
 

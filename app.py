@@ -124,6 +124,22 @@ def create_project():
     db.session.commit()
     return jsonify({"message": "Project created", "project_id": project.id}), 201
 
+@app.route('/api/project/<int:project_id>', methods=['GET'])
+def get_project(project_id):
+    user = db_user()
+    if not user:
+        return jsonify({"error": "User must be logged in"}), 401
+
+    project = Project.query.filter_by(id=project_id, user_id=user.id).first()
+    if not project:
+        return jsonify({"error": "Project not found or not owned by user"}), 404
+
+    return jsonify({
+        "id": project.id,
+        "title": project.title,
+        "video_url": project.video_url,
+        "language": project.language,
+    }), 200
 
 @app.route('/api/project/<int:project_id>', methods=['PUT'])
 def edit_project(project_id):
@@ -173,51 +189,6 @@ def get_user_preference():
         "language": language
     }), 200
 
-
-@app.route('/api/timed-text', methods=['GET'])
-def get_user_subtitles():
-    # 
-    title = ''
-    language = ''
-
-    # Validate inputs
-    if not title or not language:
-        return jsonify({
-            "error": "Both 'title' and 'language' query parameters are required."
-        }), 400
-
-    # Construct the API URL
-    api_url = "https://commons.wikimedia.org/w/api.php"
-    params = {
-        "action": "timedtext",
-        "format": "json",
-        "title": f"File:{title}",
-        "trackformat": "srt",
-        "lang": language,
-        "formatversion": 2
-    }
-
-    try:
-        response = requests.get(api_url, params=params)
-        response.raise_for_status()
-
-        # Parse the response JSON
-        print("Raw Response:", response.text)
-
-        if not response:
-            return jsonify({
-                "error": "Subtitles not found for the given title and language."
-            }), 404
-
-        return jsonify({
-            "subtitles": response.text
-        }), 200
-
-    except requests.RequestException as e:
-        return jsonify({
-            "error": "Failed to fetch subtitles.",
-            "details": str(e)
-        }), 500
 
 @app.route('/api/user-language', methods=['PUT'])
 def update_user_preference():

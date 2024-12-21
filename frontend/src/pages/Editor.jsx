@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef,useEffect, useState } from "react";
 import {
   Grid,
   Box,
@@ -8,9 +8,83 @@ import {
   ListItemText,
 } from "@mui/material";
 import WaveformTimeline from "../components/WaveformTimeline";
+import { useSelector } from "react-redux";
+import { useLocation } from "react-router-dom";
+import { backendApi } from "../utils/api";
 
 const Editor = () => {
   const videoRef = useRef(null);
+  const variable = useSelector((state) => state.myVariable.value);
+  const [finalUrl,setFinalUrl] = useState(variable)
+  const location = useLocation();
+
+  const getVideoDetails= async()=>{
+    const id = getLastEditorId();
+    try {
+      const response = await backendApi.get(`/api/project/${id}`);
+      const { video_url } = response.data;
+      console.log("Video URL:", video_url);
+      const response2 = await getUrl(video_url);
+      if (response2!=false){
+        setFinalUrl(response2)
+      }
+    } catch (error) {
+      console.error("Error fetching project details:", error);
+    }
+  }
+
+  const getLastEditorId = () => {
+    const segments = location.pathname.split("/");
+    return segments[segments.length - 1];
+  };
+
+  const getUrl = async (url) => {
+    try {
+      if (!url.includes('commons.wikimedia.org')) {
+        return false; 
+      }
+      const match = url.match(
+        /^https:\/\/commons\.wikimedia\.org\/wiki\/(.+)$/
+      );
+      if (!match) {
+        return false;
+      }
+
+      const pageTitle = decodeURI(match[1]); // Ensure the title is decoded properly
+      console.log("Page Title:", pageTitle);
+
+      const params = {
+        action: "query",
+        format: "json",
+        prop: "videoinfo", // Include 'videoinfo' to get video details
+        titles: pageTitle,
+        viprop: "user|url|canonicaltitle|comment|url", // Fetch specific video properties
+        origin: "*",
+      };
+
+      const res = await fetch(
+        `https://commons.wikimedia.org/w/api.php?${new URLSearchParams(params)}`
+      );
+
+      const response = await res.json();
+      const { pages } = response.query;
+
+      if (Object.keys(pages)[0] !== '-1') {
+        const { url } = pages[Object.keys(pages)[0]].videoinfo[0];
+        if (url.length>0){
+          return url
+        }
+      }
+    } catch (error) {
+    console.error("Error:", error);
+    return false;
+    }
+  };
+
+  useEffect(() => {
+    getVideoDetails();
+  }, []);
+
 
   return (
     <Grid container sx={{ height: "100vh", backgroundColor: "#121212" }}>
@@ -70,7 +144,7 @@ const Editor = () => {
                 borderRadius: "8px",
                 boxShadow: "0px 0px 30px rgba(255, 255, 255, 0.3)",
               }}
-              src="https://upload.wikimedia.org/wikipedia/commons/transcoded/e/ea/Margrit_Hugentobler%27s_speech%2C_Lidk%C3%B6ping%2C_Sweden.webm/Margrit_Hugentobler%27s_speech%2C_Lidk%C3%B6ping%2C_Sweden.webm.360p.vp9.webm"
+              src={finalUrl}
             ></video>
           </Box>
         </Grid>
