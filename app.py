@@ -208,8 +208,9 @@ def update_user_preference():
 @app.route('/api/timed-text', methods=['GET'])
 def get_user_subtitles():
     # 
-    title = 'Elephants Dream.ogv' #example
-    language = 'en'
+    title = request.args.get('title') 
+    language = request.args.get('language')  #example
+    # language = 'en'
     # Validate inputs
     if not title or not language:
         return jsonify({
@@ -228,12 +229,13 @@ def get_user_subtitles():
     try:
         response = requests.get(api_url, params=params)
         response.raise_for_status()
+        
         # Parse the response JSON
-        print("Raw Response:", response.text)
         if not response:
             return jsonify({
                 "error": "Subtitles not found for the given title and language."
             }), 404
+        print("sub", response.text)
         return jsonify({
             "subtitles": response.text
         }), 200

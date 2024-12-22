@@ -6,11 +6,17 @@ import clamp from "lodash/clamp";
 const WaveformTimeline = ({ videoRef, subtitles, onSubtitleAdd, onSubtitleDelete }) => {
   const waveformRef = useRef(null);
   const wfPlayerInstance = useRef(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStartX, setDragStartX] = useState(null);
-  const [dragEndX, setDragEndX] = useState(null);
   const [currentScroll, setCurrentScroll] = useState(0);
+  const [interaction, setInteraction] = useState({
+    type: null, // 'create', 'drag', 'resize'
+    index: null,
+    startX: null,
+    currentX: null,
+    resizeHandle: null // 'left' or 'right'
+  });
+
   const scrollSpeed = 0.01;
+  const viewDuration = 10;
 
   const handleWheel = useCallback((event) => {
     event.preventDefault();
@@ -20,54 +26,132 @@ const WaveformTimeline = ({ videoRef, subtitles, onSubtitleAdd, onSubtitleDelete
     const newScroll = clamp(
       currentScroll + (event.deltaY * scrollSpeed),
       0,
-      videoDuration - 10
+      videoDuration - viewDuration
     );
 
     setCurrentScroll(newScroll);
     wfPlayerInstance.current.seek(newScroll);
   }, [currentScroll, videoRef]);
 
-  const onMouseDown = useCallback((event) => {
-    if (event.button !== 0) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const offsetX = event.clientX - rect.left;
-    setIsDragging(true);
-    setDragStartX(offsetX);
-    setDragEndX(offsetX);
+  const getTimeFromX = useCallback((x) => {
+    if (!waveformRef.current) return 0;
+    const rect = waveformRef.current.getBoundingClientRect();
+    return currentScroll + (x / rect.width) * viewDuration;
+  }, [currentScroll]);
+
+  const checkOverlap = useCallback((start, end, excludeIndex = null) => {
+    return subtitles.some((subtitle, index) =>
+      index !== excludeIndex && (start < subtitle.end && end > subtitle.start)
+    );
+  }, [subtitles]);
+
+  const handleMouseDown = useCallback((e) => {
+    if (e.button !== 0) return;
+    const rect = waveformRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+
+    setInteraction({
+      type: 'create',
+      index: null,
+      startX: x,
+      currentX: x,
+      resizeHandle: null
+    });
   }, []);
 
-  const onMouseMove = useCallback((event) => {
-    if (!isDragging || !waveformRef.current) return;
+  const handleSubtitleMouseDown = useCallback((e, index, handle = null) => {
+    e.stopPropagation();
     const rect = waveformRef.current.getBoundingClientRect();
-    const offsetX = event.clientX - rect.left;
-    setDragEndX(offsetX);
-  }, [isDragging]);
+    const x = e.clientX - rect.left;
 
-  const onMouseUp = useCallback(() => {
-    if (!isDragging || !videoRef.current || !waveformRef.current) return;
+    setInteraction({
+      type: handle ? 'resize' : 'drag',
+      index,
+      startX: x,
+      currentX: x,
+      resizeHandle: handle
+    });
+  }, []);
 
-    const waveformWidth = waveformRef.current.offsetWidth;
-    const viewDuration = 10;
+  const handleMouseMove = useCallback((e) => {
+    if (!interaction.type || !waveformRef.current) return;
 
-    const startTime = currentScroll + (Math.min(dragStartX, dragEndX) / waveformWidth * viewDuration);
-    const endTime = currentScroll + (Math.max(dragStartX, dragEndX) / waveformWidth * viewDuration);
+    const rect = waveformRef.current.getBoundingClientRect();
+    const currentX = clamp(e.clientX - rect.left, 0, rect.width);
 
-    const hasOverlap = subtitles.some(subtitle =>
-      (startTime < subtitle.end && endTime > subtitle.start)
-    );
+    setInteraction(prev => ({ ...prev, currentX }));
 
-    if (!hasOverlap && endTime - startTime > 0.1) {
-      onSubtitleAdd({
-        start: startTime,
-        end: endTime,
-        text: "New subtitle"
-      });
+    if (interaction.type === 'create') {
+      // Creating new subtitle - handled in mouseup
+      return;
     }
 
-    setIsDragging(false);
-    setDragStartX(null);
-    setDragEndX(null);
-  }, [isDragging, dragStartX, dragEndX, videoRef, subtitles, onSubtitleAdd, currentScroll]);
+    const subtitle = subtitles[interaction.index];
+    const deltaTime = getTimeFromX(currentX) - getTimeFromX(interaction.startX);
+
+    let newStart = subtitle.start;
+    let newEnd = subtitle.end;
+
+    if (interaction.type === 'drag') {
+      const duration = subtitle.end - subtitle.start;
+      newStart = clamp(subtitle.start + deltaTime, currentScroll, currentScroll + viewDuration - duration);
+      newEnd = newStart + duration;
+    } else if (interaction.type === 'resize') {
+      if (interaction.resizeHandle === 'left') {
+        newStart = clamp(subtitle.start + deltaTime, currentScroll, subtitle.end - 0.1);
+      } else {
+        newEnd = clamp(subtitle.end + deltaTime, subtitle.start + 0.1, currentScroll + viewDuration);
+      }
+    }
+
+    if (!checkOverlap(newStart, newEnd, interaction.index)) {
+      onSubtitleAdd({
+        ...subtitle,
+        start: newStart,
+        end: newEnd
+      }, interaction.index);
+
+      setInteraction(prev => ({ ...prev, startX: currentX }));
+    }
+  }, [interaction, subtitles, currentScroll, checkOverlap, getTimeFromX, onSubtitleAdd]);
+
+  const handleMouseUp = useCallback(() => {
+    if (interaction.type === 'create' && interaction.startX !== interaction.currentX) {
+      const startTime = getTimeFromX(Math.min(interaction.startX, interaction.currentX));
+      const endTime = getTimeFromX(Math.max(interaction.startX, interaction.currentX));
+
+      if (!checkOverlap(startTime, endTime) && endTime - startTime > 0.1) {
+        onSubtitleAdd({
+          start: startTime,
+          end: endTime,
+          text: "New subtitle"
+        });
+      }
+    }
+
+    setInteraction({
+      type: null,
+      index: null,
+      startX: null,
+      currentX: null,
+      resizeHandle: null
+    });
+  }, [interaction, getTimeFromX, checkOverlap, onSubtitleAdd]);
+
+  useEffect(() => {
+    const waveformElement = waveformRef.current;
+    if (!waveformElement) return;
+
+    waveformElement.addEventListener("wheel", handleWheel, { passive: false });
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      waveformElement.removeEventListener("wheel", handleWheel);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [handleWheel, handleMouseMove, handleMouseUp]);
 
   useEffect(() => {
     [...WFPlayer.instances].forEach((item) => item.destroy());
@@ -79,7 +163,7 @@ const WaveformTimeline = ({ videoRef, subtitles, onSubtitleAdd, onSubtitleDelete
       mediaElement: videoRef.current,
       scrollable: true,
       useWorker: false,
-      duration: 10,
+      duration: viewDuration,
       padding: 1,
       wave: true,
       pixelRatio: 2,
@@ -98,25 +182,8 @@ const WaveformTimeline = ({ videoRef, subtitles, onSubtitleAdd, onSubtitleDelete
     };
   }, [videoRef]);
 
-  useEffect(() => {
-    const waveformElement = waveformRef.current;
-    if (!waveformElement) return;
-
-    waveformElement.addEventListener("wheel", handleWheel, { passive: false });
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-
-    return () => {
-      waveformElement.removeEventListener("wheel", handleWheel);
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-    };
-  }, [handleWheel, onMouseMove, onMouseUp]);
-
   const renderSubtitlesAndOverlay = () => {
     if (!videoRef.current) return null;
-
-    const viewDuration = 10;
 
     return (
       <>
@@ -127,6 +194,7 @@ const WaveformTimeline = ({ videoRef, subtitles, onSubtitleAdd, onSubtitleDelete
 
           const startPercent = ((subtitle.start - currentScroll) / viewDuration) * 100;
           const widthPercent = ((subtitle.end - subtitle.start) / viewDuration) * 100;
+          const isActive = interaction.index === index;
 
           return (
             <div
@@ -135,9 +203,9 @@ const WaveformTimeline = ({ videoRef, subtitles, onSubtitleAdd, onSubtitleDelete
                 position: "absolute",
                 left: `${startPercent}%`,
                 width: `${widthPercent}%`,
-                height: "20px",
+                height: "100%",
                 top: "0",
-                backgroundColor: "rgba(76, 175, 80, 0.5)",
+                backgroundColor: isActive ? "rgba(76, 175, 80, 0.7)" : "rgba(76, 175, 80, 0.5)",
                 borderRadius: "4px",
                 color: "white",
                 fontSize: "12px",
@@ -145,31 +213,53 @@ const WaveformTimeline = ({ videoRef, subtitles, onSubtitleAdd, onSubtitleDelete
                 alignItems: "center",
                 justifyContent: "center",
                 pointerEvents: "auto",
-                cursor: "pointer",
-                zIndex: 2,
-                overflow: "hidden",
-                whiteSpace: "nowrap"
+                cursor: interaction.type === 'drag' && isActive ? "grabbing" : "grab",
+                zIndex: isActive ? 3 : 2,
+                userSelect: "none"
               }}
+              onMouseDown={(e) => handleSubtitleMouseDown(e, index)}
               onDoubleClick={() => onSubtitleDelete(index)}
             >
-              {subtitle.text}
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  width: "8px",
+                  height: "100%",
+                  cursor: "ew-resize"
+                }}
+                onMouseDown={(e) => handleSubtitleMouseDown(e, index, 'left')}
+              />
+
+              <span style={{ pointerEvents: "none" }}>{subtitle.text}</span>
+
+              <div
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: 0,
+                  width: "8px",
+                  height: "100%",
+                  cursor: "ew-resize"
+                }}
+                onMouseDown={(e) => handleSubtitleMouseDown(e, index, 'right')}
+              />
             </div>
           );
         })}
 
-        {isDragging && dragStartX !== null && dragEndX !== null && (
+        {interaction.type === 'create' && interaction.startX !== interaction.currentX && (
           <div
             style={{
               position: "absolute",
-              left: `${Math.min(dragStartX, dragEndX)}px`,
-              width: `${Math.abs(dragEndX - dragStartX)}px`,
-              height: "20px",
-              top: "0",
+              left: `${Math.min(interaction.startX, interaction.currentX)}px`,
+              width: `${Math.abs(interaction.currentX - interaction.startX)}px`,
+              height: "100%",
               backgroundColor: "rgba(255, 255, 255, 0.3)",
               border: "1px solid rgba(255, 255, 255, 0.5)",
               borderRadius: "4px",
-              pointerEvents: "none",
-              zIndex: 1
+              pointerEvents: "none"
             }}
           />
         )}
@@ -184,12 +274,12 @@ const WaveformTimeline = ({ videoRef, subtitles, onSubtitleAdd, onSubtitleDelete
         width: "100%",
         height: "100px",
         position: "relative",
-        cursor: isDragging ? "col-resize" : "default",
+        cursor: interaction.type === 'create' ? "col-resize" : "default",
         backgroundColor: "rgba(0, 0, 0, 0.2)",
         borderRadius: "8px",
         overflow: "hidden"
       }}
-      onMouseDown={onMouseDown}
+      onMouseDown={handleMouseDown}
     >
       {renderSubtitlesAndOverlay()}
     </div>

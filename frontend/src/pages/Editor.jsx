@@ -1,4 +1,4 @@
-import { useRef,useEffect, useState } from "react";
+import { useRef, useEffect, useState } from "react";
 import {
   Grid,
   Box,
@@ -12,7 +12,6 @@ import {
   TextField,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
 import WaveformTimeline from "../components/WaveformTimeline";
 import { useSelector } from "react-redux";
 import { useLocation } from "react-router-dom";
@@ -20,40 +19,103 @@ import { backendApi } from "../utils/api";
 import { useNavigate } from "react-router-dom";
 import SRTParser2 from "srt-parser-2";
 
+
 const Editor = () => {
   const navigate = useNavigate();
   const videoRef = useRef(null);
   const variable = useSelector((state) => state.myVariable.value);
-  const [finalUrl,setFinalUrl] = useState(variable)
+  const [finalUrl, setFinalUrl] = useState(variable);
   const location = useLocation();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editText, setEditText] = useState("");
 
-  const getVideoDetails= async()=>{
+  useEffect(() => {
+    const fetchProjectAndSubtitles = async () => {
+      const id = getLastEditorId();
+      try {
+        const projectResponse = await backendApi.get(`/api/project/${id}`);
+        const { title, video_url, language } = projectResponse.data;
+
+        // Get video URL from Wikimedia if needed
+        const videoUrlResponse = await getUrl(video_url);
+        if (videoUrlResponse !== false) {
+          setFinalUrl(videoUrlResponse);
+        }
+
+        // Then fetch subtitles if we have a title
+        if (title) {
+          try {
+            const subtitlesResponse = await backendApi.get('/api/timed-text', {
+              params: {
+                title: title,
+                language: language || 'en'
+              }
+            });
+
+            if (subtitlesResponse.data && subtitlesResponse.data.subtitles) {
+              // Parse the SRT content
+              const parser = new SRTParser2();
+              const parsedSubtitles = parser.fromSrt(subtitlesResponse.data.subtitles);
+
+              // Convert to your subtitle format
+              const formattedSubtitles = parsedSubtitles.map(sub => ({
+                start: timeToSeconds(sub.startTime),
+                end: timeToSeconds(sub.endTime),
+                text: sub.text
+              }));
+
+              // Update subtitles state if we got valid subtitles
+              if (formattedSubtitles.length > 0) {
+                setSubtitles(formattedSubtitles);
+              }
+            }
+          } catch (subtitleError) {
+            console.error("Error fetching subtitles:", subtitleError);
+            // Keep default subtitles if subtitle fetch fails
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching project details:", error);
+      }
+    };
+
+    fetchProjectAndSubtitles();
+  }, []);
+
+  // Define the subtitles with their timestamps
+  const [subtitles, setSubtitles] = useState([
+    { start: 5, end: 10, text: "Subtitle line 1" },
+    { start: 11, end: 15, text: "Subtitle line 2" },
+    { start: 16, end: 20, text: "Subtitle line 3" },
+  ]);
+
+  const getVideoDetails = async () => {
     const id = getLastEditorId();
     try {
       const response = await backendApi.get(`/api/project/${id}`);
       const { video_url } = response.data;
       const response2 = await getUrl(video_url);
-      if (response2!=false){
-        setFinalUrl(response2)
+      if (response2 !== false) {
+        setFinalUrl(response2);
       }
     } catch (error) {
       console.error("Error fetching project details:", error);
     }
-  }
+  };
 
   const getLastEditorId = () => {
     const segments = location.pathname.split("/");
+    console.log("segemts", segments)
     return segments[segments.length - 1];
   };
 
   const getUrl = async (url) => {
     try {
       if (!url.includes('commons.wikimedia.org')) {
-        return false; 
+        return false;
       }
-      const match = url.match(
-        /^https:\/\/commons\.wikimedia\.org\/wiki\/(.+)$/
-      );
+      const match = url.match(/^https:\/\/commons\.wikimedia\.org\/wiki\/(.+)$/);
       if (!match) {
         return false;
       }
@@ -62,45 +124,83 @@ const Editor = () => {
       const params = {
         action: "query",
         format: "json",
-        prop: "videoinfo", // Include 'videoinfo' to get video details
+        prop: "videoinfo",
         titles: pageTitle,
-        viprop: "user|url|canonicaltitle|comment|url", // Fetch specific video properties
+        viprop: "user|url|canonicaltitle|comment|url",
         origin: "*",
       };
 
-      const res = await fetch(
-        `https://commons.wikimedia.org/w/api.php?${new URLSearchParams(params)}`
-      );
-
+      const res = await fetch(`https://commons.wikimedia.org/w/api.php?${new URLSearchParams(params)}`);
       const response = await res.json();
       const { pages } = response.query;
 
       if (Object.keys(pages)[0] !== '-1') {
         const { url } = pages[Object.keys(pages)[0]].videoinfo[0];
-        if (url.length>0){
-          return url
+        if (url.length > 0) {
+          return url;
         }
       }
+      return false;
     } catch (error) {
-    console.error("Error:", error);
-    return false;
+      console.error("Error:", error);
+      return false;
     }
   };
+
+
 
   useEffect(() => {
     getVideoDetails();
   }, []);
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingSubtitle, setEditingSubtitle] = useState(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const formatVTTTime = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds % 1) * 1000);
 
-  // Define the subtitles with their timestamps
-  const [subtitles, setSubtitles] = useState([
-    { start: 5, end: 10, text: "Subtitle line 1" },
-    { start: 11, end: 15, text: "Subtitle line 2" },
-    { start: 16, end: 20, text: "Subtitle line 3" },
-  ]);
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+  };
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+
+    // Remove any existing tracks
+    const existingTracks = videoRef.current.getElementsByTagName('track');
+    while (existingTracks.length > 0) {
+      videoRef.current.removeChild(existingTracks[0]);
+    }
+
+    // Create WebVTT content
+    const vttContent = `WEBVTT\n\n${subtitles
+      .map((sub, index) => {
+        const startTime = formatVTTTime(sub.start);
+        const endTime = formatVTTTime(sub.end);
+        return `${index + 1}\n${startTime} --> ${endTime}\n${sub.text}\n`;
+      })
+      .join('\n')}`;
+
+    // Create blob and URL
+    const blob = new Blob([vttContent], { type: 'text/vtt' });
+    const subtitleUrl = URL.createObjectURL(blob);
+
+    // Create and append track element
+    const track = document.createElement('track');
+    track.kind = 'subtitles';
+    track.label = 'English';
+    track.srclang = 'en';
+    track.src = subtitleUrl;
+    track.default = true;
+
+    videoRef.current.appendChild(track);
+
+    // Cleanup
+    return () => {
+      URL.revokeObjectURL(subtitleUrl);
+    };
+  }, [subtitles]); // Dependency on subtitles array
+
+
 
   // Handle subtitle click, seek the video to the specific time
   const handleSubtitleClick = (timestamp) => {
@@ -119,22 +219,30 @@ const Editor = () => {
     setSubtitles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Handle editing subtitle
-  const handleEditClick = (subtitle, index) => {
-    setEditingSubtitle({ ...subtitle, index });
-    setIsEditModalOpen(true);
+  // Handle edit start
+  const handleEditStart = (subtitle, index) => {
+    setEditingIndex(index);
+    setEditText(subtitle.text);
   };
 
-  // Handle save edited subtitle
-  const handleSaveEdit = () => {
-    if (editingSubtitle) {
-      setSubtitles((prev) =>
-        prev.map((sub, index) =>
-          index === editingSubtitle.index ? editingSubtitle : sub
-        )
-      );
-      setIsEditModalOpen(false);
-      setEditingSubtitle(null);
+  // Handle edit save
+  const handleEditSave = (index) => {
+    if (editText.trim()) {
+      setSubtitles(prev => prev.map((sub, i) =>
+        i === index ? { ...sub, text: editText } : sub
+      ));
+    }
+    setEditingIndex(null);
+    setEditText("");
+  };
+
+  // Handle key press during edit
+  const handleKeyPress = (e, index) => {
+    if (e.key === 'Enter') {
+      handleEditSave(index);
+    } else if (e.key === 'Escape') {
+      setEditingIndex(null);
+      setEditText("");
     }
   };
 
@@ -148,7 +256,6 @@ const Editor = () => {
         const content = e.target.result;
         const parser = new SRTParser2();
         let parsedSubtitles = parser.fromSrt(content, true);
-        // Convert time format
         parsedSubtitles = parsedSubtitles.map((subtitle) => ({
           start: timeToSeconds(subtitle.startTime),
           end: timeToSeconds(subtitle.endTime),
@@ -163,13 +270,56 @@ const Editor = () => {
       }
     };
     reader.readAsText(file);
+
+
+
   };
 
+  const secondsToSrtTime = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const milliseconds = Math.floor((seconds % 1) * 1000);
+
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+  };
+
+  // Convert subtitles array to SRT format
+  const convertToSrt = (subtitles) => {
+    return subtitles
+      .map((subtitle, index) => {
+        return `${index + 1}\n${secondsToSrtTime(subtitle.start)} --> ${secondsToSrtTime(subtitle.end)}\n${subtitle.text}\n`;
+      })
+      .join('\n');
+  };
+
+  // Add this function inside the Editor component
+  function handleDownload() {
+    // Convert subtitles to SRT format
+    const srtContent = convertToSrt(subtitles);
+
+    // Create blob with SRT content
+    const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
+
+    // Create temporary link element
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+
+    // Set filename
+    const videoName = finalUrl.split('/').pop().split('.')[0] || 'subtitles';
+    link.download = `${videoName}.srt`;
+
+    // Append link to document, click it, and remove it
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Clean up the URL object
+    URL.revokeObjectURL(link.href);
+  };
   return (
     <Grid container sx={{ height: "100vh", backgroundColor: "#121212" }}>
-      {/* Video and subtitle list section */}
       <Grid container item xs={12} sx={{ padding: 2, height: "calc(100% - 200px)" }}>
-        {/* Video section */}
         <Grid item xs={6} sx={{ padding: 1 }}>
           <Box sx={{ width: "100%", aspectRatio: "16 / 9" }}>
             <video
@@ -182,11 +332,10 @@ const Editor = () => {
                 boxShadow: "0px 0px 30px rgba(255, 255, 255, 0.3)",
               }}
               src={finalUrl}
-            ></video>
+            />
           </Box>
         </Grid>
 
-        {/* Subtitles list */}
         <Grid item xs={3} sx={{ padding: 1 }}>
           <Box
             sx={{
@@ -202,30 +351,58 @@ const Editor = () => {
                 <ListItem
                   key={index}
                   secondaryAction={
-                    <Box>
-                      <IconButton
-                        edge="end"
-                        aria-label="edit"
-                        onClick={() => handleEditClick(subtitle, index)}
-                        sx={{ color: "white" }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton
-                        edge="end"
-                        aria-label="delete"
-                        onClick={() => handleSubtitleDelete(index)}
-                        sx={{ color: "white" }}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Box>
+                    <IconButton
+                      edge="end"
+                      aria-label="delete"
+                      onClick={() => handleSubtitleDelete(index)}
+                      sx={{ color: "white" }}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
                   }
                 >
                   <ListItemText
-                    sx={{ color: "#808080", cursor: "pointer" }}
+                    sx={{ color: "#808080", cursor: "pointer", width: "100%" }}
                     primary={`${formatTime(subtitle.start)} - ${formatTime(subtitle.end)}`}
-                    secondary={subtitle.text}
+                    secondary={
+                      editingIndex === index ? (
+                        <TextField
+                          fullWidth
+                          autoFocus
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onBlur={() => handleEditSave(index)}
+                          onKeyDown={(e) => handleKeyPress(e, index)}
+                          size="small"
+                          sx={{
+                            '& .MuiInputBase-input': {
+                              color: '#fff',
+                            },
+                            '& .MuiOutlinedInput-root': {
+                              '& fieldset': {
+                                borderColor: '#404040',
+                              },
+                              '&:hover fieldset': {
+                                borderColor: '#606060',
+                              },
+                            },
+                          }}
+                        />
+                      ) : (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditStart(subtitle, index);
+                          }}
+                          style={{
+                            cursor: 'pointer',
+                            color: "#dee2e6"
+                          }}
+                        >
+                          {subtitle.text}
+                        </span>
+                      )
+                    }
                     onClick={() => handleSubtitleClick(subtitle.start)}
                   />
                 </ListItem>
@@ -234,7 +411,6 @@ const Editor = () => {
           </Box>
         </Grid>
 
-        {/* Buttons section */}
         <Grid item xs={3} sx={{ padding: 1 }}>
           <Box
             sx={{
@@ -252,7 +428,7 @@ const Editor = () => {
             <Button variant="contained" color="secondary" fullWidth onClick={() => setIsModalOpen(true)}>
               Upload Subtitles
             </Button>
-            <Button variant="contained" color="secondary" fullWidth>
+            <Button variant="contained" color="secondary" fullWidth onClick={handleDownload}>
               Download Subtitles
             </Button>
             <Button variant="contained" color="secondary" fullWidth>
@@ -262,7 +438,6 @@ const Editor = () => {
         </Grid>
       </Grid>
 
-      {/* Waveform timeline section */}
       <Grid
         item
         xs={12}
@@ -305,89 +480,6 @@ const Editor = () => {
           </Button>
         </Box>
       </Modal>
-
-      {/* Edit Modal */}
-      <Modal open={isEditModalOpen} onClose={() => setIsEditModalOpen(false)}>
-        <Box
-          sx={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            width: 400,
-            bgcolor: "background.paper",
-            borderRadius: "8px",
-            boxShadow: 24,
-            p: 4,
-          }}
-        >
-          <Typography variant="h6" gutterBottom>
-            Edit Subtitle
-          </Typography>
-          {editingSubtitle && (
-            <>
-              <TextField
-                fullWidth
-                label="Start Time (seconds)"
-                type="number"
-                value={editingSubtitle.start}
-                onChange={(e) =>
-                  setEditingSubtitle((prev) => ({
-                    ...prev,
-                    start: Number(e.target.value),
-                  }))
-                }
-                sx={{ mb: 2 }}
-              />
-              <TextField
-                fullWidth
-                label="End Time (seconds)"
-                type="number"
-                value={editingSubtitle.end}
-                onChange={(e) =>
-                  setEditingSubtitle((prev) => ({
-                    ...prev,
-                    end: Number(e.target.value),
-                  }))
-                }
-                sx={{ mb: 2 }}
-              />
-              <TextField
-                fullWidth
-                label="Subtitle Text"
-                multiline
-                rows={3}
-                value={editingSubtitle.text}
-                onChange={(e) =>
-                  setEditingSubtitle((prev) => ({
-                    ...prev,
-                    text: e.target.value,
-                  }))
-                }
-                sx={{ mb: 2 }}
-              />
-              <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
-                <Button
-                  variant="outlined"
-                  onClick={() => setIsEditModalOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="contained"
-                  onClick={handleSaveEdit}
-                  disabled={
-                    editingSubtitle.start >= editingSubtitle.end ||
-                    !editingSubtitle.text.trim()
-                  }
-                >
-                  Save Changes
-                </Button>
-              </Box>
-            </>
-          )}
-        </Box>
-      </Modal>
     </Grid>
   );
 };
@@ -409,5 +501,7 @@ const formatTime = (seconds) => {
   const secs = Math.floor(seconds % 60);
   return `${minutes}:${secs < 10 ? "0" : ""}${secs}`;
 };
+
+
 
 export default Editor;
