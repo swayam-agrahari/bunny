@@ -32,7 +32,6 @@ const Editor = () => {
     try {
       const response = await backendApi.get(`/api/project/${id}`);
       const { video_url } = response.data;
-      console.log("Video URL:", video_url);
       const response2 = await getUrl(video_url);
       if (response2!=false){
         setFinalUrl(response2)
@@ -60,8 +59,6 @@ const Editor = () => {
       }
 
       const pageTitle = decodeURI(match[1]); // Ensure the title is decoded properly
-      console.log("Page Title:", pageTitle);
-
       const params = {
         action: "query",
         format: "json",

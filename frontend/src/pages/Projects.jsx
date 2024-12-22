@@ -12,17 +12,21 @@ import {
   CircularProgress,
   Select,
   MenuItem,
+  CardMedia,
 } from "@mui/material";
 import { Link } from "react-router-dom";
 import ISO6391 from "iso-639-1";
 import { backendApi } from "../utils/api";
 import { useDispatch } from "react-redux";
 import { updateVariable } from "../redux/variables/myVariableSlice";
+import axios from "axios";
 
 const Projects = () => {
   const [projects, setProjects] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [thumbnails, setThumbnails] = useState({});
+
   const dispatch = useDispatch();
 
   const UpdateVideoURL = (url) => {
@@ -59,6 +63,48 @@ const Projects = () => {
   useEffect(() => {
     fetchProjects();
   }, []);
+
+  const fetchThumbnail = async (url) => {
+    const match = url.match(/^https:\/\/commons\.wikimedia\.org\/wiki\/(.+)$/);
+    if (!match) {
+      return "";
+    }
+
+    const pageTitle = decodeURI(match[1]);
+    try {
+      const response = await axios.get("https://commons.wikimedia.org/w/api.php", {
+        params: {
+          action: "query",
+          format: "json",
+          titles: `${pageTitle}`,
+          prop: "imageinfo",
+          iiprop: "url",
+          iiurlwidth: 650,
+          origin: "*",
+        },
+      });
+
+      const pages = response.data.query.pages;
+      const page = Object.values(pages)[0]; // Get the first page (or the only one)
+      return page.imageinfo ? page.imageinfo[0].thumburl : "";
+    } catch (error) {
+      console.error("Error fetching thumbnail:", error);
+      return "";
+    }
+  };
+  useEffect(() => {
+    const loadThumbnails = async () => {
+      const urls = {};
+      for (const project of projects) {
+        if (project.video_url) {
+          urls[project.id] = await fetchThumbnail(project.video_url);
+        }
+      }
+      setThumbnails(urls);
+    };
+
+    loadThumbnails();
+  }, [projects]);
 
   const fetchProjects = async () => {
     try {
@@ -117,7 +163,7 @@ const Projects = () => {
   const isValidCommonsPage = async (url) => {
     try {
       if (!url.includes('commons.wikimedia.org')) {
-        return false;
+        return false; 
       }
       const match = url.match(
         /^https:\/\/commons\.wikimedia\.org\/wiki\/(.+)$/
@@ -127,8 +173,6 @@ const Projects = () => {
       }
 
       const pageTitle = decodeURI(match[1]); // Ensure the title is decoded properly
-      console.log("Page Title:", pageTitle);
-
       const params = {
         action: "query",
         format: "json",
@@ -147,15 +191,14 @@ const Projects = () => {
 
       if (Object.keys(pages)[0] !== '-1') {
         const { url } = pages[Object.keys(pages)[0]].videoinfo[0];
-        if (url.length > 0) {
-          console.log(url)
+        if (url.length>0){
           UpdateVideoURL(url);
           return true
         }
       }
     } catch (error) {
-      console.error("Error:", error);
-      return false;
+    console.error("Error:", error);
+    return false;
     }
   };
 
@@ -220,6 +263,12 @@ const Projects = () => {
                       overflow: "hidden",
                     }}
                   >
+                    <CardMedia
+                      component="img"
+                      height="160"
+                      image={thumbnails[project.id]}
+                      alt={project.title}
+                    />
                     <CardContent>
                       <Typography variant="h6">{project.title}</Typography>
                       <Typography variant="body2" color="text.secondary">
